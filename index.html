@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HacX — Network CSV Uploader</title>
+  <style>
+    body{font-family:system-ui,Arial,sans-serif;max-width:960px;margin:40px auto;padding:0 16px}
+    .card{border:1px solid #e5e5e5;border-radius:12px;padding:24px}
+    .drop{border:2px dashed #bbb;border-radius:12px;padding:36px;text-align:center}
+    progress{width:100%;height:18px}
+    .muted{color:#666;font-size:14px}
+    #result{white-space:pre-wrap;background:#fafafa;padding:12px;border-radius:8px}
+  </style>
+</head>
+<body>
+  <h1>Upload Network CSV</h1>
+  <div class="card">
+    <div class="drop" id="drop">
+      <p><strong>Drag & drop</strong> your .csv here, or</p>
+      <input type="file" id="file" accept=".csv" />
+    </div>
+    <div id="meta" class="muted">Accepted: .csv • Max ~100 MB (configurable)</div>
+    <div style="margin-top:16px;">
+      <progress id="bar" value="0" max="100" hidden></progress>
+      <div id="status" class="muted"></div>
+    </div>
+  </div>
+
+  <h2 style="margin-top:36px;">Uploads</h2>
+  <div id="result" class="card"></div>
+
+  <script>
+    // If the Function is LINKED to the SWA, leave empty:
+    const apiBase = "";
+    // Otherwise: const apiBase = "https://<your-function>.azurewebsites.net";
+
+    const fileInput = document.getElementById('file');
+    const drop = document.getElementById('drop');
+    const bar = document.getElementById('bar');
+    const status = document.getElementById('status');
+    const result = document.getElementById('result');
+
+    function human(n){ return (n/1024/1024).toFixed(2)+' MB'; }
+
+    drop.addEventListener('dragover', e => { e.preventDefault(); drop.style.background='#f7f7ff'; });
+    drop.addEventListener('dragleave', () => drop.style.background='');
+    drop.addEventListener('drop', e => { e.preventDefault(); drop.style.background=''; if (e.dataTransfer.files.length) upload(e.dataTransfer.files[0]); });
+    fileInput.addEventListener('change', e => { if (e.target.files.length) upload(e.target.files[0]); });
+
+    async function upload(file){
+      if(!file.name.toLowerCase().endsWith('.csv')){ alert('Please choose a .csv file'); return; }
+      bar.hidden = false; bar.value = 0; status.textContent = 'Requesting upload URL…';
+      try{
+        const res = await fetch(`${apiBase}/api/getUploadUrl?filename=${encodeURIComponent(file.name)}`);
+        if(!res.ok) throw new Error('Failed to get SAS URL');
+        const { uploadUrl, path } = await res.json();
+
+        status.textContent = `Uploading ${file.name} (${human(file.size)})…`;
+        const xhr = new XMLHttpRequest();
+        xhr.upload.addEventListener('progress', e => { if(e.lengthComputable) bar.value = Math.round((e.loaded/e.total)*100); });
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300){
+            status.textContent = 'Upload complete → ' + path;
+            result.textContent = (result.textContent ? result.textContent + '\n' : '') + new Date().toISOString() + '  ' + path;
+          } else {
+            status.textContent = 'Upload failed: ' + xhr.status + ' ' + xhr.statusText;
+          }
+        });
+        xhr.addEventListener('error', () => status.textContent = 'Network error during upload.');
+        xhr.open('PUT', uploadUrl, true);
+        xhr.setRequestHeader('x-ms-blob-type', 'BlockBlob');
+        xhr.setRequestHeader('content-type', 'text/csv');
+        xhr.send(file);
+      } catch(err){
+        console.error(err); status.textContent = 'Error: ' + err.message;
+      }
+    }
+  </script>
+</body>
+</html>
