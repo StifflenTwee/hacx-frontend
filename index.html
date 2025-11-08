@@ -1,394 +1,50 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>HacX — Network Anomaly Portal</title>
-  <style>
-    :root{
-      --bg:#0b1020; --card:#111729; --muted:#91a0c2; --fg:#e9eefc; --brand:#3d7eff; --ok:#20c997; --warn:#f59f00; --bad:#ff6b6b;
-      --radius:14px;
-    }
-    html,body{height:100%}
-    body{margin:0;background:linear-gradient(180deg,#0b1020 0%, #0f1530 100%);color:var(--fg);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial,sans-serif;}
-    .container{max-width:1120px;margin:40px auto;padding:0 20px}
-    h1{font-weight:800;letter-spacing:.2px;margin:12px 0 20px}
-    .muted{color:var(--muted)}
-    .card{background:var(--card);border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);padding:20px}
-    .row{display:flex;gap:16px;flex-wrap:wrap}
-    .btn{appearance:none;border:0;border-radius:10px;padding:10px 14px;font-weight:600;background:var(--brand);color:white;cursor:pointer}
-    .btn.secondary{background:#2a3550}
-    .btn:disabled{opacity:.6;cursor:not-allowed}
-    .input, select, input[type="datetime-local"]{background:#0f1831;border:1px solid #263258;color:var(--fg);border-radius:10px;padding:10px 12px}
-    .tabs{display:flex;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:16px}
-    .tab{padding:10px 14px;margin-right:8px;border:1px solid transparent;border-top-left-radius:10px;border-top-right-radius:10px;cursor:pointer}
-    .tab.active{background:var(--card);border-color:rgba(255,255,255,.08);border-bottom-color:transparent}
-    .panel{display:none}
-    .panel.active{display:block}
-
-    .drop{border:2px dashed #405089;border-radius:16px;padding:36px;text-align:center;background:#0f1831}
-    .drop.drag{background:#0b1537}
-    progress{width:100%;height:18px}
-    .list{display:grid;gap:10px}
-    details{background:#0f1831;border:1px solid #263258;border-radius:10px;padding:10px}
-    summary{cursor:pointer;font-weight:700}
-    .kpi{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:12px}
-    .kpi > div{background:#0f1831;border:1px solid #263258;border-radius:12px;padding:14px}
-    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:8px 10px;border-bottom:1px solid #263258;text-align:left}
-    .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid #263258;background:#1a2444}
-    footer{margin:40px 0 20px;text-align:center;color:#7c8db7}
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Upload</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 </head>
 <body>
-  <div class="container">
-    <h1>Network Anomaly Portal</h1>
-    <div class="tabs" role="tablist">
-      <button class="tab active" data-tab="uploads" role="tab" aria-controls="uploads" aria-selected="true">Uploads</button>
-      <button class="tab" data-tab="results" role="tab" aria-controls="results" aria-selected="false">Results</button>
-      <button class="tab" data-tab="about" role="tab" aria-controls="about" aria-selected="false">About</button>
-    </div>
+    <h1>Upload CSV File</h1>
+    <form id="uploadForm" enctype="multipart/form-data">
+        <label for="file">Choose a CSV file:</label>
+        <input type="file" id="file" name="file" accept=".csv" required>
+        <button type="submit">Upload</button>
+    </form>
 
-    <!-- ========== UPLOADS TAB ========== -->
-    <section id="uploads" class="panel active" role="tabpanel" aria-labelledby="Uploads">
-      <div class="card">
-        <div class="drop" id="drop">
-          <p><strong>Drag & drop</strong> your .csv here, or</p>
-          <p><input type="file" id="file" class="input" accept=".csv" /></p>
-          <p class="muted">Accepted: .csv • Max ~100 MB (configurable)</p>
-        </div>
-        <div style="margin-top:16px">
-          <progress id="bar" value="0" max="100" hidden></progress>
-          <div id="status" class="muted mono"></div>
-          <!-- TODO: Hook processing status here (e.g. poll /api/jobStatus?path=<uploadPath>) to show cleaning/detection progress. -->
-        </div>
-      </div>
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', function (e) {
+            e.preventDefault();  // Prevent the default form submission
 
-      <h3 style="margin:20px 0 8px">Recent uploads</h3>
-      <div id="uploadsLog" class="card mono" style="white-space:pre-wrap"></div>
-    </section>
+            const fileInput = document.getElementById('file');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please select a file to upload');
+                return;
+            }
 
-    <!-- ========== RESULTS TAB ========== -->
-    <section id="results" class="panel" role="tabpanel" aria-labelledby="Results">
-      <div class="card" style="margin-bottom:16px">
-        <div class="row">
-          <button class="btn" id="btnLoad">Load latest results</button>
-          <input class="input" style="flex:1;min-width:260px" id="manualUrl" placeholder="…or paste full URL/path to results.csv (SAS URL or relative)" />
-          <button class="btn secondary" id="btnLoadManual">Load from URL</button>
-        </div>
-        <div class="row" style="margin-top:12px;align-items:center">
-          <label>Window:</label>
-          <select id="window" class="input">
-            <option value="all">All</option>
-            <option value="10m">Last 10 minutes</option>
-            <option value="1h">Last 1 hour</option>
-            <option value="6h">Last 6 hours</option>
-            <option value="24h">Last 24 hours</option>
-            <option value="custom">Custom…</option>
-          </select>
-          <input type="datetime-local" id="customStart" class="input" style="display:none"/>
-          <input type="datetime-local" id="customEnd" class="input" style="display:none"/>
-          <button class="btn secondary" id="btnApply" style="display:none">Apply</button>
-        </div>
-      </div>
+            const formData = new FormData();
+            formData.append('file', file);
 
-      <div class="kpi" id="kpi">
-        <div><div class="muted">Rows loaded</div><div id="k_all" style="font-size:22px;font-weight:800">0</div></div>
-        <div><div class="muted">In window</div><div id="k_win" style="font-size:22px;font-weight:800">0</div></div>
-        <div><div class="muted">Types (unique)</div><div id="k_types" style="font-size:22px;font-weight:800">0</div></div>
-        <div><div class="muted">Last updated</div><div id="k_time" style="font-size:22px;font-weight:800">—</div></div>
-      </div>
+            // Replace with your function app URL
+            const functionAppUrl = "https://gray-tree-05cd22f00.3.azurestaticapps.net/api/uploadCsv"; // This URL should be configured with the Function App.
 
-      <div class="card" style="margin-top:16px">
-        <h3 style="margin:0 0 10px">By anomaly type</h3>
-        <div id="byType" class="list"></div>
-      </div>
-
-      <div class="card" style="margin-top:16px">
-        <h3 style="margin:0 0 10px">Anomalies</h3>
-        <input class="input" id="search" placeholder="Search details… (client-side)" style="width:100%;margin:8px 0 12px"/>
-        <div id="tableWrap" style="overflow:auto">
-          <table id="table"></table>
-        </div>
-      </div>
-    </section>
-
-    <!-- ========== ABOUT TAB (OPTIONAL) ========== -->
-    <section id="about" class="panel" role="tabpanel" aria-labelledby="About">
-      <div class="card">
-        <h3>About this demo</h3>
-        <p class="muted">Minimal portal to upload network CSVs and inspect anomaly results produced by your pipeline. "Load latest results" expects an API that returns a time-limited URL to <code>results.csv</code>. You can also paste a SAS URL directly.</p>
-      </div>
-    </section>
-
-    <footer class="muted">Built for Azure Static Web Apps + Azure Functions.</footer>
-  </div>
-
-  <script>
-    // If the Function app is linked to Static Web Apps, leave as empty string.
-    const apiBase = "https://hacx-functionapp-bab9hhefaudne3bz.southeastasia-01.azurewebsites.net"; // e.g. "" or "https://<your-func>.azurewebsites.net"
-
-    // ------------------------------
-    // Tabs
-    // ------------------------------
-    const tabs = document.querySelectorAll('.tab');
-    const panels = document.querySelectorAll('.panel');
-    tabs.forEach(t=>t.addEventListener('click',()=>{
-      tabs.forEach(x=>x.classList.remove('active'));
-      panels.forEach(p=>p.classList.remove('active'));
-      t.classList.add('active');
-      document.getElementById(t.dataset.tab).classList.add('active');
-    }));
-
-    // ------------------------------
-    // UPLOAD logic (keeps your existing flow)
-    // ------------------------------
-    const fileInput = document.getElementById('file');
-    const drop = document.getElementById('drop');
-    const bar = document.getElementById('bar');
-    const status = document.getElementById('status');
-    const uploadsLog = document.getElementById('uploadsLog');
-
-    function human(n){ return (n/1024/1024).toFixed(2)+' MB'; }
-
-    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
-    drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
-    drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('drag'); if (e.dataTransfer.files.length) upload(e.dataTransfer.files[0]); });
-    fileInput.addEventListener('change', e => { if (e.target.files.length) upload(e.target.files[0]); });
-
-    async function upload(file){
-      if(!file.name.toLowerCase().endsWith('.csv')){ alert('Please choose a .csv file'); return; }
-      bar.hidden = false; bar.value = 0; status.textContent = 'Requesting upload URL…';
-      try{
-        const res = await fetch(`${apiBase}/api/getUploadUrl?filename=${encodeURIComponent(file.name)}`);
-        if(!res.ok) throw new Error('Failed to get SAS URL');
-        const { uploadUrl, path } = await res.json();
-
-        status.textContent = `Uploading ${file.name} (${human(file.size)})…`;
-        const xhr = new XMLHttpRequest();
-        xhr.upload.addEventListener('progress', e => { if(e.lengthComputable) bar.value = Math.round((e.loaded/e.total)*100); });
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300){
-            status.textContent = 'Upload complete → ' + path;
-            const line = new Date().toISOString() + '  ' + path;
-            uploadsLog.textContent = (uploadsLog.textContent ? uploadsLog.textContent + '\n' : '') + line;
-            localStorage.setItem('lastUploadPath', path);
-          } else {
-            status.textContent = 'Upload failed: ' + xhr.status + ' ' + xhr.statusText;
-          }
+            axios.post(functionAppUrl, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                }
+            })
+            .then(response => {
+                alert('File uploaded successfully');
+                console.log(response.data);  // Logs the response from the function app
+            })
+            .catch(error => {
+                alert('Error uploading file');
+                console.error(error);
+            });
         });
-        xhr.addEventListener('error', () => status.textContent = 'Network error during upload.');
-        xhr.open('PUT', uploadUrl, true);
-        xhr.setRequestHeader('x-ms-blob-type', 'BlockBlob');
-        xhr.setRequestHeader('content-type', 'text/csv');
-        xhr.send(file);
-      } catch(err){ console.error(err); status.textContent = 'Error: ' + err.message; }
-    }
-
-    // ------------------------------
-    // RESULTS logic
-    // ------------------------------
-    const btnLoad = document.getElementById('btnLoad');
-    const btnLoadManual = document.getElementById('btnLoadManual');
-    const manualUrl = document.getElementById('manualUrl');
-    const windowSel = document.getElementById('window');
-    const customStart = document.getElementById('customStart');
-    const customEnd = document.getElementById('customEnd');
-    const btnApply = document.getElementById('btnApply');
-    const search = document.getElementById('search');
-
-    const k_all = document.getElementById('k_all');
-    const k_win = document.getElementById('k_win');
-    const k_types = document.getElementById('k_types');
-    const k_time = document.getElementById('k_time');
-    const byType = document.getElementById('byType');
-    const table = document.getElementById('table');
-
-    let RAW = [];            // all rows
-    let FILTERED = [];       // filtered rows
-    let META = {};           // column keys
-
-    function toggleCustom(){
-      const show = windowSel.value === 'custom';
-      customStart.style.display = show ? '' : 'none';
-      customEnd.style.display = show ? '' : 'none';
-      btnApply.style.display = show ? '' : 'none';
-    }
-    windowSel.addEventListener('change', toggleCustom);
-
-    // Try to ask backend for a signed URL to the latest results.csv
-    btnLoad.addEventListener('click', async () => {
-      try{
-        const r = await fetch(`${apiBase}/api/getResultsUrl`); // implement in Functions to return { url }
-        if(!r.ok) throw new Error('No getResultsUrl API');
-        const { url } = await r.json();
-        localStorage.setItem('lastResultsUrl', url);
-        await loadResults(url);
-      }catch(err){
-        alert('Could not get latest results from API. Paste a SAS URL instead.\n\n' + err.message);
-      }
-    });
-
-    btnLoadManual.addEventListener('click', async () => {
-      if(!manualUrl.value.trim()) return alert('Paste a full URL or relative path to results.csv');
-      const url = manualUrl.value.trim();
-      localStorage.setItem('lastResultsUrl', url);
-      await loadResults(url);
-    });
-
-    async function loadResults(url){
-      const res = await fetch(url);
-      if(!res.ok) throw new Error(`Failed to fetch results: ${res.status}`);
-      const text = await res.text();
-      RAW = parseCSV(text);
-      META = detectColumns(RAW[0]||{});
-      k_time.textContent = new Date().toLocaleString();
-      k_all.textContent = RAW.length.toLocaleString();
-      applyWindow();
-    }
-
-    // CSV parser that handles commas inside quotes
-    function parseCSV(text){
-      const lines = text.replace(/\r/g,'').split('\n').filter(Boolean);
-      if(!lines.length) return [];
-      const headers = splitCSVLine(lines[0]).map(h=>h.trim());
-      const rows = [];
-      for(let i=1;i<lines.length;i++){
-        const fields = splitCSVLine(lines[i]);
-        if(fields.length===1 && fields[0].trim()==='') continue;
-        const obj={};
-        headers.forEach((h,idx)=>obj[h]=fields[idx]!==undefined?fields[idx]:"");
-        rows.push(obj);
-      }
-      return rows;
-    }
-    function splitCSVLine(line){
-      const out=[]; let cur=''; let q=false;
-      for(let i=0;i<line.length;i++){
-        const c=line[i]; const n=line[i+1];
-        if(c==='"'){
-          if(q && n==='"'){ cur+='"'; i++; }
-          else q=!q;
-        } else if(c===',' && !q){ out.push(cur); cur=''; }
-        else cur+=c;
-      }
-      out.push(cur);
-      return out;
-    }
-
-    // Detect common column names
-    function detectColumns(row){
-      const keys = Object.keys(row||{});
-      const find = (regexArr)=> keys.find(k=>regexArr.some(rx=>rx.test(k)));
-      const startKey = find([/^(time(frame)?_?start|start(_time)?|window_start)$/i, /(^|_)from$/i]);
-      const endKey   = find([/^(time(frame)?_?end|end(_time)?|window_end)$/i, /(^|_)to$/i]);
-      const tsKey    = find([/^time(stamp)?$/i, /^(event_)?time$/i]);
-      const typeKey  = find([/^type$/i, /^anomaly$/i, /^label$/i, /anomaly_?type/i]);
-      const detailKey= find([/^details?$/i, /^data$/i, /^signal(s)?$/i, /flag(ged)?_?data/i, /evidence/i]);
-      const idKey    = find([/^id$/i, /(anomaly|event)_?id/i]);
-      return { startKey, endKey, tsKey, typeKey, detailKey, idKey };
-    }
-
-    function rowWindow(r){
-      const {startKey,endKey,tsKey}=META;
-      const s = startKey ? Date.parse(r[startKey]) : (tsKey ? Date.parse(r[tsKey]) : NaN);
-      const e = endKey ? Date.parse(r[endKey]) : (tsKey ? Date.parse(r[tsKey]) : s);
-      return [isNaN(s)?null:new Date(s), isNaN(e)?null:new Date(e)];
-    }
-
-    function applyWindow(){
-      let start=null, end=null;
-      const now = new Date();
-      const val = windowSel.value;
-      if(val==='10m'){ start = new Date(now.getTime()-10*60*1000); end = now; }
-      else if(val==='1h'){ start = new Date(now.getTime()-60*60*1000); end = now; }
-      else if(val==='6h'){ start = new Date(now.getTime()-6*60*60*1000); end = now; }
-      else if(val==='24h'){ start = new Date(now.getTime()-24*60*60*1000); end = now; }
-      else if(val==='custom'){
-        start = customStart.value ? new Date(customStart.value) : null;
-        end   = customEnd.value   ? new Date(customEnd.value)   : null;
-      }
-      FILTERED = RAW.filter(r=>{
-        const [s,e] = rowWindow(r);
-        if(!s && !e) return true; // keep if unknown
-        const st = s||e, en=e||s;
-        if(start && en < start) return false;
-        if(end && st > end) return false;
-        return true;
-      });
-      k_win.textContent = FILTERED.length.toLocaleString();
-      renderByType();
-      renderTable();
-    }
-
-    btnApply.addEventListener('click', applyWindow);
-    windowSel.addEventListener('change', ()=>{ if(windowSel.value!=='custom') applyWindow(); });
-
-    function renderByType(){
-      const { typeKey } = META; byType.innerHTML='';
-      const map = new Map();
-      for(const r of FILTERED){
-        const t = (r[typeKey]||'Unknown').toString();
-        map.set(t, (map.get(t)||0)+1);
-      }
-      k_types.textContent = map.size;
-      const entries = Array.from(map.entries()).sort((a,b)=>b[1]-a[1]);
-      for(const [t,c] of entries){
-        const el = document.createElement('details');
-        const sum = document.createElement('summary');
-        sum.innerHTML = `${t} <span class="pill">${c}</span>`;
-        el.appendChild(sum);
-        const list = document.createElement('div');
-        list.className='mono';
-        list.style.whiteSpace='pre-wrap';
-        const rows = FILTERED.filter(r=> (r[META.typeKey]||'Unknown').toString()===t);
-        for(const r of rows){
-          const [s,e]=rowWindow(r);
-          const when = (s && e) ? `${s.toISOString()} → ${e.toISOString()}` : (s? s.toISOString(): 'n/a');
-          const details = META.detailKey ? String(r[META.detailKey]) : JSON.stringify(r);
-          list.textContent += `• ${when}  ::  ${details}\n`;
-        }
-        el.appendChild(list);
-        byType.appendChild(el);
-      }
-    }
-
-    function renderTable(){
-      const keys = Object.keys(RAW[0]||{});
-      // simple fuzzy search over details
-      const q = search.value.trim().toLowerCase();
-      const rows = FILTERED.filter(r=>{
-        if(!q) return true;
-        const s = META.detailKey ? String(r[META.detailKey]).toLowerCase() : JSON.stringify(r).toLowerCase();
-        return s.includes(q);
-      });
-      // sort by start/end desc
-      rows.sort((a,b)=>{
-        const [sa,ea]=rowWindow(a); const [sb,eb]=rowWindow(b);
-        const ta=(ea||sa||0).getTime?.()||0, tb=(eb||sb||0).getTime?.()||0;
-        return tb-ta;
-      });
-      let html = '<thead><tr>' + keys.map(k=>`<th>${k}</th>`).join('') + '</tr></thead><tbody>';
-      for(const r of rows){
-        html += '<tr>' + keys.map(k=>`<td>${escapeHtml(r[k])}</td>`).join('') + '</tr>';
-      }
-      html += '</tbody>';
-      table.innerHTML = html;
-    }
-
-    search.addEventListener('input', ()=>renderTable());
-
-    function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-
-    // Auto-load last URL if present
-    (function init(){
-      const last = localStorage.getItem('lastResultsUrl');
-      if(last){ manualUrl.value = last; }
-      const lastUp = localStorage.getItem('lastUploadPath');
-      if(lastUp){ uploadsLog.textContent = new Date().toISOString() + '  ' + lastUp; }
-    })();
-  </script>
+    </script>
 </body>
 </html>
-
